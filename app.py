@@ -1,39 +1,46 @@
-from flask import Flask, render_template, request, jsonify
-from flask_cors import CORS  # Import CORS
-from twilio.rest import Client
-import os
+from flask import Flask, request, jsonify
+import cv2
+import numpy as np
+import base64
+from io import BytesIO
+from PIL import Image
 
 app = Flask(__name__)
-CORS(app)  # Habilita CORS para todas as rotas
 
-# Configuração do Twilio
-TWILIO_ACCOUNT_SID = 'your_twilio_account_sid'
-TWILIO_AUTH_TOKEN = 'your_twilio_auth_token'
-TWILIO_WHATSAPP_NUMBER = 'whatsapp:+14155238886'
-DEST_WHATSAPP_NUMBER = 'whatsapp:+5511943471217'
+@app.route('/process_image', methods=['POST'])
+def process_image():
+    data = request.json
+    image_data = data['image'].split(',')[1]  # Remover cabeçalho 'data:image/png;base64,...'
+    image_bytes = base64.b64decode(image_data)
 
-client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    # Converter bytes para imagem OpenCV
+    image = Image.open(BytesIO(image_bytes))
+    image_np = np.array(image)
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+    # Processar imagem (detecção de nitidez e qualidade)
+    document_type = detect_document_type(image_np)
+    quality_check = check_image_quality(image_np)
 
-@app.route('/send_photo', methods=['POST'])
-def send_photo():
-    file = request.files['photo']
-    file_path = os.path.join('uploads', file.filename)
-    file.save(file_path)
+    return jsonify({'document_type': document_type, 'quality': quality_check})
 
-    message = client.messages.create(
-        body='Olá, estou enviando a foto do meu documento.',
-        from_=TWILIO_WHATSAPP_NUMBER,
-        to=DEST_WHATSAPP_NUMBER,
-        media_url=f'http://your-server-url/{file_path}'
-    )
+def detect_document_type(img):
+    # Usar OCR para verificar se é RG ou CNH
+    text = pytesseract.image_to_string(img)
+    if "CNH" in text:
+        return "CNH"
+    elif "RG" in text:
+        return "RG"
+    else:
+        return "Desconhecido"
 
-    return jsonify({'status': 'sucesso', 'message_sid': message.sid})
+def check_image_quality(img):
+    # Verificar nitidez (variação da Laplaciana para detectar embaçamento)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+    if variance < 100:
+        return "Imagem embaçada"
+    else:
+        return "Imagem clara"
 
 if __name__ == '__main__':
-    if not os.path.exists('uploads'):
-        os.makedirs('uploads')
     app.run(debug=True)
