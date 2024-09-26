@@ -8,24 +8,30 @@
 </head>
 <body>
     <div class="container">
-        <h1>Envie seu Documento</h1>
-        <p>Posicione seu RG ou CNH abertos na câmera. A foto será capturada automaticamente.</p>
+        <h1>Posicione seu Documento</h1>
+        <p>Alinhe o RG ou CNH na moldura e capture a foto quando estiver tudo certo.</p>
+
+        <!-- Vídeo da câmera -->
+        <div class="video-container">
+            <video id="video" autoplay playsinline></video>
+            
+            <!-- Moldura de sobreposição -->
+            <div class="overlay-frame"></div>
+        </div>
         
-        <video id="video" autoplay playsinline></video>
-        <canvas id="canvas" style="display: none;"></canvas>
         <button id="capture">Capturar Imagem</button>
         <div id="feedback"></div>
     </div>
 
     <script>
         const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
         const captureButton = document.getElementById('capture');
         const feedback = document.getElementById('feedback');
 
-        // Ativar câmera
-        navigator.mediaDevices.getUserMedia({ video: true })
+        // Ativar câmera traseira
+        navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: { exact: "environment" } }
+        })
         .then(stream => {
             video.srcObject = stream;
         })
@@ -35,26 +41,7 @@
 
         // Capturar imagem do vídeo
         captureButton.addEventListener('click', () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // Converter imagem para base64
-            const imageData = canvas.toDataURL('image/png');
-
-            // Enviar para o backend
-            fetch('/process_image', {
-                method: 'POST',
-                body: JSON.stringify({ image: imageData }),
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(response => response.json())
-            .then(data => {
-                feedback.innerHTML = `Documento detectado: ${data.document_type}. Qualidade: ${data.quality}`;
-            })
-            .catch(error => {
-                console.error('Erro ao enviar imagem:', error);
-            });
+            // Adicionar lógica para captura da imagem
         });
     </script>
 </body>
