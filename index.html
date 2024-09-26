@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Envio de Documentos</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        #container {
+            max-width: 400px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #logo {
+            width: 150px;
+            margin-bottom: 20px;
+        }
+
+        #camera {
+            position: relative;
+            margin-top: 20px;
+        }
+
+        #video {
+            width: 100%;
+            border: 2px solid #0A1F44;
+            border-radius: 10px;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #frame {
+            border: 4px dashed #FF6B35;
+            width: 80%;
+            height: 50%;
+            margin: auto;
+            position: relative;
+            top: 25%;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        canvas {
+            margin-top: 20px;
+            border: 2px solid #0A1F44;
+            width: 100%;
+        }
+
+        button {
+            background-color: #FF6B35;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin-top: 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0A1F44;
+        }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <!-- Adição do logotipo -->
+    <img id="logo" src="/logo.png" alt="Logotipo da Empresa">
+
+    <h1>Envie seu Documento</h1>
+    <p>Selecione o tipo de documento para tirar foto:</p>
+
+    <button onclick="selectDocument('CNH')">CNH</button>
+    <button onclick="selectDocument('RG')">RG</button>
+
+    <div id="instructions" class="hidden">
+        <p id="instructionText"></p>
+    </div>
+
+    <div id="camera" class="hidden">
+        <video id="video" autoplay playsinline></video>
+        <div id="overlay">
+            <div id="frame"></div>
+        </div>
+        <button id="capture" onclick="capturePhoto()">Tirar Foto</button>
+    </div>
+
+    <canvas id="canvas" class="hidden"></canvas>
+    <p id="message"></p>
+
+    <button id="sendWhatsApp" class="hidden" onclick="sendToWhatsApp()">Enviar pelo WhatsApp</button>
+</div>
+
+<script>
+    let video = document.querySelector("#video");
+    let canvas = document.querySelector("#canvas");
+    let context = canvas.getContext("2d");
+    let selectedDocument = '';
+    let isDocumentCentered = false;
+
+    function selectDocument(documentType) {
+        selectedDocument = documentType;
+        document.querySelector("#instructions").classList.remove("hidden");
+
+        let instructionText = document.querySelector("#instructionText");
+        if (documentType === 'CNH') {
+            instructionText.innerText = "Tire a foto da CNH aberta, mostrando a frente e o verso.";
+            adjustFrameForCNH();
+        } else if (documentType === 'RG') {
+            instructionText.innerText = "Tire a foto do RG aberto, mostrando a frente e o verso.";
+            adjustFrameForRG();
+        }
+
+        document.querySelector("#camera").classList.remove("hidden");
+        startCamera();
+    }
+
+    function startCamera() {
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+            .then(function (stream) {
+                video.srcObject = stream;
+            })
+            .catch(function (err) {
+                console.error("Erro ao acessar a câmera: ", err);
+            });
+    }
+
+    function adjustFrameForCNH() {
+        // Ajustar a moldura e o canvas para CNH
+        document.querySelector("#frame").style.width = "70%";
+        document.querySelector("#frame").style.height = "40%";
+    }
+
+    function adjustFrameForRG() {
+        // Ajustar a moldura e o canvas para RG
+        document.querySelector("#frame").style.width = "80%";
+        document.querySelector("#frame").style.height = "50%";
+    }
+
+    function capturePhoto() {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Verificar nitidez e posição do documento
+        const isClear = checkSharpness();
+        isDocumentCentered = checkDocumentInFrame();
+
+        if (isClear && isDocumentCentered) {
+            document.querySelector("#message").innerText = "Foto tirada com sucesso! Documento está legível e posicionado corretamente.";
+            document.querySelector("#sendWhatsApp").classList.remove("hidden"); // Mostrar o botão de enviar
+        } else {
+            document.querySelector("#message").innerText = "Atenção: Verifique se a imagem está nítida e se o documento está dentro da moldura.";
+        }
+
+        document.querySelector("#canvas").classList.remove("hidden");
+    }
+
+    // Função para verificar se a imagem está nítida com base no contraste
+    function checkSharpness() {
+        let imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+        let pixels = imageData.data;
+        let contrast = 0;
+
+        for (let i = 0; i < pixels.length; i += 4) {
+            let avg = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3; // Média dos valores RGB
+            contrast += Math.abs(avg - 128); // Calcula a diferença do valor médio com 128 (meio do espectro)
+        }
+
+        contrast /= (pixels.length / 4);
+        return contrast > 30; // Se o contraste médio for superior a 30, consideramos nítido
+    }
+
+    // Verifica se o documento está dentro da moldura com base na área de interesse
+    function checkDocumentInFrame() {
+        const frame = document.querySelector("#frame");
+        const frameRect = frame.getBoundingClientRect();
+        const videoRect = video.getBoundingClientRect();
+
+        const frameTop = frameRect.top - videoRect.top;
+        const frameLeft = frameRect.left - videoRect.left;
+        const frameWidth = frameRect.width;
+        const frameHeight = frameRect.height;
+
+        // Verificar se a área da imagem corresponde à moldura
+        return frameTop >= 0 && frameLeft >= 0 && (frameTop + frameHeight <= videoRect.height) && (frameLeft + frameWidth <= videoRect.width);
+    }
+
+    // Função para enviar a foto capturada para o WhatsApp
+    function sendToWhatsApp() {
+        let imageDataUrl = canvas.toDataURL("image/jpeg");
+
+        const whatsappNumber = "5511943471217";
+        const message = `Olá, estou enviando a foto do meu documento (${selectedDocument}). Por favor, veja o anexo.`;
+
+        // Não é possível anexar a imagem diretamente pelo link do WhatsApp. O usuário precisará anexar manualmente
+        const whatsappUrl = `https://api.whatsapp.com/send?phone=${whatsappNumber}&text=${encodeURIComponent(message)}`;
+
+        // Abrir o WhatsApp com a mensagem
+        window.open(whatsappUrl, '_blank');
+    }
+</script>
+
+</body>
+</html>
